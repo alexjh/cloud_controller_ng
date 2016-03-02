@@ -82,6 +82,29 @@ module VCAP::CloudController
         expect(parsed_response['services'].map { |service_json| service_json['guid'] }).to_not include service_instance2.guid
       end
 
+      context 'when the user role does not have access to the private service instances in the space' do
+        let(:user) { User.make }
+        let(:organization) { space.organization }
+
+        before do
+          organization.add_user(user)
+          organization.add_manager(user)
+        end
+
+        it 'returns service summary for the space, but not the private service instances' do
+          foo_space = Space.make
+          private_broker = ServiceBroker.make(space_guid: foo_space.guid)
+          service = Service.make(service_broker: private_broker)
+          service_plan = ServicePlan.make(service: service, public: false)
+          service_instance = ManagedServiceInstance.make(space: space, service_plan: service_plan)
+
+          get "/v2/spaces/#{space.guid}/summary", '', headers_for(user)
+
+          parsed_response = MultiJson.load(last_response.body)
+          expect(parsed_response['services'].map { |service_json| service_json['guid'] }).to eq []
+        end
+      end
+
       context 'when the instances reporter fails' do
         before do
           allow(instances_reporters).to receive(:number_of_starting_and_running_instances_for_apps).and_raise(
